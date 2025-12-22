@@ -24,5 +24,12 @@ export type Task = {
   due_date: string;
   fixed_time: string | null;
   notes: string | null;
+  workspace: string;
   created_at: string;
+};
+
+// Workspace passcodes - change these to your preferred codes
+export const WORKSPACES: Record<string, string> = {
+  'work123': 'work',
+  'personal456': 'personal',
 };

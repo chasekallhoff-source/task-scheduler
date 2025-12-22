@@ -1,8 +1,8 @@
 'use client';
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Calendar, Clock, Plus, Download, Trash2, Play, Pause, SkipForward, CheckCircle, CalendarDays, FileText } from 'lucide-react';
-import { getSupabase, Task } from '@/lib/supabase';
+import { Calendar, Clock, Plus, Download, Trash2, Play, Pause, SkipForward, CheckCircle, CalendarDays, FileText, LogOut, Lock } from 'lucide-react';
+import { getSupabase, Task, WORKSPACES } from '@/lib/supabase';
 
 // Category color mapping
 const categoryColors: Record<string, { bg: string; text: string; border: string; light: string }> = {
@@ -54,6 +54,9 @@ export default function TaskScheduler() {
   const [draggedScheduleItem, setDraggedScheduleItem] = useState<number | null>(null);
   const [viewMode, setViewMode] = useState<'today' | 'upcoming' | 'past'>('today');
   const [isLoading, setIsLoading] = useState(true);
+  const [workspace, setWorkspace] = useState<string | null>(null);
+  const [passcode, setPasscode] = useState('');
+  const [passcodeError, setPasscodeError] = useState('');
 
   // Timer refs for accurate countdown
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -72,14 +75,27 @@ export default function TaskScheduler() {
     notes: task.notes,
   });
 
-  // Load tasks from Supabase on mount
+  // Check for saved workspace on mount
   useEffect(() => {
+    const savedWorkspace = localStorage.getItem('taskSchedulerWorkspace');
+    if (savedWorkspace) {
+      setWorkspace(savedWorkspace);
+    } else {
+      setIsLoading(false);
+    }
+  }, []);
+
+  // Load tasks from Supabase when workspace is set
+  useEffect(() => {
+    if (!workspace) return;
+
     const loadTasks = async () => {
       setIsLoading(true);
       try {
         const { data, error } = await getSupabase()
           .from('tasks')
           .select('*')
+          .eq('workspace', workspace)
           .order('created_at', { ascending: true });
 
         if (error) throw error;
@@ -101,7 +117,29 @@ export default function TaskScheduler() {
     };
 
     loadTasks();
-  }, []);
+  }, [workspace]);
+
+  // Handle passcode login
+  const handleLogin = () => {
+    const ws = WORKSPACES[passcode];
+    if (ws) {
+      localStorage.setItem('taskSchedulerWorkspace', ws);
+      setWorkspace(ws);
+      setPasscode('');
+      setPasscodeError('');
+    } else {
+      setPasscodeError('Invalid passcode');
+    }
+  };
+
+  // Handle logout
+  const handleLogout = () => {
+    localStorage.removeItem('taskSchedulerWorkspace');
+    setWorkspace(null);
+    setAllTasks([]);
+    setTodaysTasks([]);
+    setSchedule(null);
+  };
 
   // Load today's tasks
   const loadTodaysTasks = (tasks: LocalTask[] = allTasks) => {
@@ -303,7 +341,7 @@ export default function TaskScheduler() {
   };
 
   const addTask = async () => {
-    if (newTask.name && newTask.duration && newTask.category && newTask.dueDate) {
+    if (newTask.name && newTask.duration && newTask.category && newTask.dueDate && workspace) {
       try {
         const { data, error } = await getSupabase()
           .from('tasks')
@@ -314,6 +352,7 @@ export default function TaskScheduler() {
             due_date: newTask.dueDate,
             fixed_time: newTask.fixedTime || null,
             notes: newTask.notes || null,
+            workspace: workspace,
           }])
           .select()
           .single();
@@ -673,6 +712,50 @@ export default function TaskScheduler() {
     );
   }
 
+  // Login screen
+  if (!workspace) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 flex items-center justify-center p-8">
+        <div className="bg-white rounded-xl shadow-2xl p-8 w-full max-w-md">
+          <div className="text-center mb-8">
+            <div className="inline-flex items-center justify-center w-16 h-16 bg-indigo-100 rounded-full mb-4">
+              <Lock size={32} className="text-indigo-600" />
+            </div>
+            <h1 className="text-2xl font-bold text-gray-800">Task Scheduler</h1>
+            <p className="text-gray-500 mt-2">Enter your passcode to continue</p>
+          </div>
+
+          <div className="space-y-4">
+            <div>
+              <input
+                type="password"
+                value={passcode}
+                onChange={(e) => {
+                  setPasscode(e.target.value);
+                  setPasscodeError('');
+                }}
+                onKeyDown={(e) => e.key === 'Enter' && handleLogin()}
+                className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-indigo-500 focus:border-transparent text-center text-xl tracking-widest"
+                placeholder="Enter passcode"
+                autoFocus
+              />
+              {passcodeError && (
+                <p className="text-red-500 text-sm mt-2 text-center">{passcodeError}</p>
+              )}
+            </div>
+
+            <button
+              onClick={handleLogin}
+              className="w-full bg-indigo-600 text-white py-3 rounded-lg font-medium hover:bg-indigo-700 transition"
+            >
+              Continue
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-100 p-8">
       <div className="max-w-6xl mx-auto">
@@ -681,6 +764,22 @@ export default function TaskScheduler() {
             <Calendar size={40} />
             Task Scheduler
           </h1>
+          <div className="flex items-center justify-center gap-2 mt-2">
+            <span className={`text-sm font-medium px-3 py-1 rounded-full ${
+              workspace === 'work'
+                ? 'bg-blue-100 text-blue-700'
+                : 'bg-pink-100 text-pink-700'
+            }`}>
+              {workspace === 'work' ? 'Work' : 'Personal'}
+            </span>
+            <button
+              onClick={handleLogout}
+              className="text-gray-500 hover:text-gray-700 p-1 transition"
+              title="Switch workspace"
+            >
+              <LogOut size={18} />
+            </button>
+          </div>
         </div>
 
         {/* View Mode Toggle */}
