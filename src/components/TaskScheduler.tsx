@@ -57,6 +57,7 @@ export default function TaskScheduler() {
   const [workspace, setWorkspace] = useState<string | null>(null);
   const [passcode, setPasscode] = useState('');
   const [passcodeError, setPasscodeError] = useState('');
+  const [formError, setFormError] = useState('');
 
   // Timer refs for accurate countdown
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -341,37 +342,50 @@ export default function TaskScheduler() {
   };
 
   const addTask = async () => {
-    if (newTask.name && newTask.duration && newTask.category && newTask.dueDate && workspace) {
-      try {
-        const { data, error } = await getSupabase()
-          .from('tasks')
-          .insert([{
-            name: newTask.name,
-            duration: parseInt(newTask.duration),
-            category: newTask.category,
-            due_date: newTask.dueDate,
-            fixed_time: newTask.fixedTime || null,
-            notes: newTask.notes || null,
-            workspace: workspace,
-          }])
-          .select()
-          .single();
+    // Validate required fields
+    const missing: string[] = [];
+    if (!newTask.name) missing.push('Task Name');
+    if (!newTask.duration) missing.push('Duration');
+    if (!newTask.category) missing.push('Category');
+    if (!newTask.dueDate) missing.push('Due Date');
 
-        if (error) throw error;
+    if (missing.length > 0) {
+      setFormError(`Please fill in: ${missing.join(', ')}`);
+      return;
+    }
 
-        const localTask = dbToLocal(data);
-        const updated = [...allTasks, localTask];
-        setAllTasks(updated);
+    setFormError('');
 
-        const today = new Date().toISOString().split('T')[0];
-        if (newTask.dueDate === today) {
-          setTodaysTasks([...todaysTasks, localTask]);
-        }
+    try {
+      const { data, error } = await getSupabase()
+        .from('tasks')
+        .insert([{
+          name: newTask.name,
+          duration: parseInt(newTask.duration),
+          category: newTask.category,
+          due_date: newTask.dueDate,
+          fixed_time: newTask.fixedTime || null,
+          notes: newTask.notes || null,
+          workspace: workspace,
+        }])
+        .select()
+        .single();
 
-        setNewTask({ name: '', duration: '', category: '', dueDate: newTask.dueDate, fixedTime: '', notes: '' });
-      } catch (error) {
-        console.error('Failed to add task:', error);
+      if (error) throw error;
+
+      const localTask = dbToLocal(data);
+      const updated = [...allTasks, localTask];
+      setAllTasks(updated);
+
+      const today = new Date().toISOString().split('T')[0];
+      if (newTask.dueDate === today) {
+        setTodaysTasks([...todaysTasks, localTask]);
       }
+
+      setNewTask({ name: '', duration: '', category: '', dueDate: newTask.dueDate, fixedTime: '', notes: '' });
+    } catch (error) {
+      console.error('Failed to add task:', error);
+      setFormError('Failed to save task. Please try again.');
     }
   };
 
@@ -966,6 +980,9 @@ export default function TaskScheduler() {
                   <Plus size={20} />
                   Add Task
                 </button>
+                {formError && (
+                  <p className="text-red-500 text-sm mt-2 text-center">{formError}</p>
+                )}
               </div>
 
               <div className="border-t pt-4">
